@@ -6,33 +6,6 @@ cy.on('window:load', () => {
     window.aboutToUnload = false
 })
 
-Cypress.Commands.add('wait_to_hide_or_detach', (selector, options = {}) => {
-    const { timeout = Cypress.config('defaultCommandTimeout'), interval = 500 } = options
-    const startTime = Date.now()
-
-    new Promise((resolve, reject) => {
-        const checkDetachment = () => {
-            const now = Date.now()
-            const elapsedTime = now - startTime
-
-            if (elapsedTime >= timeout) {
-                throw new Error(`Element ${selector} did not become detached within ${timeout}ms`)
-            }
-
-            cy.get(selector, { timeout: 0 }).then(($element) => {
-                if (!$element.is(':visible') || Cypress.dom.isDetached($element)) {
-                    resolve(true)
-                } else {
-                    // Element is still attached, retry after interval
-                    cy.wait(interval, {log: false}).then(checkDetachment)
-                }
-            })
-        }
-
-        checkDetachment()
-    })
-})
-
 Cypress.Commands.add('wait_for_datatables', () => {
     cy.window().should((win) => {
         expect(win.$).to.be.a('function')
@@ -106,7 +79,9 @@ Cypress.Commands.add('not_loading', () => {
 
 Cypress.Commands.add("top_layer", (label_selector, base_element = 'div[role=dialog]:visible,html') => {
     cy.get_top_layer(base_element, ($el) => {
-        expect($el.find(label_selector)).length.to.be.above(0)}
+        if(label_selector){
+            expect($el.find(label_selector)).length.to.be.above(0)}
+        }
     ).then((el) => { return el })
 })
 
@@ -220,6 +195,19 @@ Cypress.Commands.add('get_top_layer', (element = null, retryUntil) => {
 
     let top_layer
     cy.get(element, {log: false}).should($els => {
+        /**
+         * There seems to be a bug where Cypress returns elements that are no longer
+         * actually present in the dom if the cy.get() call occurs around the time of a page load
+         * It's like the reference to the HTML tag is stale internally in Cypress somewhere,
+         * and does not refresh before each iteration of the should() action like it normally does.
+         * We work around this by manually getting our own reference to the HTML element to fix
+         * quite infrequent intermittent failures that seems to occur randomly in different places.
+         * 
+         * We've seen something similar inside our 'click' method overwrite call, and have also have a check there
+         * to manually get our own element reference in each iteration of the retry action.
+         */
+        $els = Cypress.$(element)
+
         $els = $els.filter(':visible')
 
         //if more than body found, find element with highest z-index
@@ -260,9 +248,20 @@ Cypress.Commands.add('get_top_layer', (element = null, retryUntil) => {
 })
 
 const getElementThatShouldDisappearAfterClick = ($el) => {
+    /**
+     * We piggy back off of disappearing element detection to also wait for expected file downloads via fetchLatestDownload() later on.
+     */
+    const downloadExpected = $el.classList.contains('external-modules-download-file') // Used by a Module Development Examples EM test.
+
     if(
         $el.id === 'assignDagRoleBtn' // C.3.30.1800
         || $el.innerText === 'Save signature' // A.3.28.0600
+        || ($el.getAttribute('onclick') ?? '').startsWith('window.location.href=') // C.3.31.3300
+        /**
+         * It doesn't matter what we return for downloads as long as we return something
+         * It might as well just be the element.
+         */
+        || downloadExpected
     ){
         return $el
     }
@@ -271,6 +270,8 @@ const getElementThatShouldDisappearAfterClick = ($el) => {
     const href = $el.href ?? ''
 
     if(
+        $el.id === 'login_btn'
+        ||
         (
             href.startsWith('http')
             &&
@@ -303,6 +304,34 @@ const getElementThatShouldDisappearAfterClick = ($el) => {
     return null
 }
 
+function interceptNewSessionIdOnTwoFactorLogin(){
+    window.newSessionId = null
+    cy.intercept(
+        {
+            method: 'POST',
+            url: '**/two_factor_verify_code.php',
+        },
+        req => {
+            req.on('response', res => {
+                const parts = res.headers['set-cookie'][0].split('redcap_session_42099b4=')
+                window.newSessionId = parts[1].split(';')[0]
+            })
+        }
+    ).as('two_factor_verify_code')
+}
+
+function applyNewSessionIdAfterTwoFactorLogin(){
+    cy.wait('@two_factor_verify_code').then(() => {
+        /**
+         * There seems to be a bug in cypress that is prevents the session ID cookie
+         * from updating properly after this request.  We must clear the cookies and
+         * manually set the new one for it to stick.  This only occurs on A.3.28.1200.
+         */
+        cy.clearCookies() 
+        cy.setCookie('redcap_session_42099b4', window.newSessionId)
+    })
+}
+
 Cypress.Commands.overwrite(
     'click',
     (originalFn, subject, options) => {
@@ -326,12 +355,12 @@ Cypress.Commands.overwrite(
 
         if(subject[0].nodeName === "A" ||
             subject[0].nodeName === "BUTTON" ||
-            (subject[0].nodeName === "INPUT" && ["button", "submit"].includes(subject[0].type) && ["", null].includes(subject[0].onclick))
+            (subject[0].nodeName === "INPUT" && ["button", "submit"].includes(subject[0].type))
         ){
             /**
              * Cypress sometimes click buttons too quickly before REDCap's javascript is finished initializing their actions.
              * Wait just a little bit before clicking to more closely simulate actual user behavior.
-             * This fixes an issue on B.2.6.0200.
+             * This fixes an issue on B.2.6.0200, C.3.31.3300, C.3.31.3500, and likely many others.
              */
             let preClickWait = 100
 
@@ -340,7 +369,11 @@ Cypress.Commands.overwrite(
                 ['Import Data', 'Commit Changes'].includes(innerText)
                 ||
                 // Wait for the javascript action to be attached to this link
-                innerText.includes('FHIR Systems')
+                (
+                    innerText.includes('FHIR Systems')
+                    ||
+                    (innerText.includes('Lock entire record') && subject[0].nodeName === "BUTTON")
+                )
             ){
                 preClickWait = 1000
             }
@@ -349,6 +382,7 @@ Cypress.Commands.overwrite(
 
             const disappearingElement = getElementThatShouldDisappearAfterClick(subject[0])
             const timeBeforeClick = Date.now()
+            const isTwoFactorCodeSubmission = subject.attr('id') === 'two_factor_verification_code_btn'
 
             //If our other detachment prevention measures failed, let's check to see if it detached and deal with it
             cy.wrap(subject).then($el => {
@@ -358,21 +392,32 @@ Cypress.Commands.overwrite(
                     cy.open_survey_in_same_tab(subject, openInSameTab, false)
                 }
 
+                if(isTwoFactorCodeSubmission){
+                    interceptNewSessionIdOnTwoFactorLogin()
+                }
+
                 cy.wrap($el).then(() => {
                     originalFn($el, options)
                 })
             })
             .then($el => {
+                if(isTwoFactorCodeSubmission){
+                    applyNewSessionIdAfterTwoFactorLogin()
+                }
+
                 $el = $el[0]
                 if(disappearingElement){
                     cy.log("Waiting for this element to disappear if it hasn't already", disappearingElement)
 
                     /**
-                     * The page should reload now.  We make sure the link element stops existing
-                     * as a way of waiting until the DOM is reloaded before continueing.
-                     * This prevents next steps from unexpectedly matching elements on the previous page.
+                     * The page should reload now.  We make sure the disappearingElement stops existing
+                     * as a way of waiting until the DOM is reloaded before continuing.
+                     * This prevents subsequent steps from unexpectedly matching elements on the previous page.
                      */
                     return cy.retryUntilTimeout(() => {
+                         /**
+                         * We piggy back off of disappearing element detection to also wait for expected file downloads.
+                         */
                         let downloadDetected = false
                         return cy.task('fetchLatestDownload', {fileExtension: null, retry: false}).then(filePath => {
                             if(filePath){
@@ -394,14 +439,17 @@ Cypress.Commands.overwrite(
                                       * Calling checkVisibility() is apparently not good enough since there seems to be
                                       * a bug in Cypress where calls like cy.get() still return elements that are no longer
                                       * actually present in the dom.  It's like the reference to the body is stale internally
-                                      * in Cypress somehere.  In any case, this works around this issue on B.6.4.1400.
+                                      * in Cypress somewhere.  In any case, this works around this issue on B.6.4.1400.
+                                      * 
+                                      * We've seen something similar inside get_top_layer(), and have also have a check there
+                                      * to manually get our own element reference in each iteration of the retry action.
                                       */
                                     getBodyAction = cy.get('body')
                                 }
 
                                 getBodyAction.then(body => {
                                     if(
-                                        // Was window.withinTarget was set above?
+                                        // Was window.withinTarget set above?
                                         body === null 
                                         ||
                                         /**
@@ -419,7 +467,7 @@ Cypress.Commands.overwrite(
                                          */
                                         body !== disappearingElement
                                     ){
-                                        cy.log('Disappearing element as disappeared')
+                                        cy.log('Disappearing element has disappeared')
                                         cy.wrap(true)
                                     }
                                     else{
@@ -445,7 +493,7 @@ Cypress.Commands.overwrite(
                                 }
 
                                 if(skipReason){
-                                    cy.log('Skipping dissappearing element detection because ' + skipReason)
+                                    cy.log('Skipping disappearing element detection because ' + skipReason)
                                     cy.wrap(true)
                                 }
                                 else{
@@ -453,12 +501,17 @@ Cypress.Commands.overwrite(
                                 }
                             }
                         })
-                        /**
-                         * Arbitrary wait after page load to hopefully avoid flaky tests
-                         * caused by various javascript page initilization tasks.
-                         */
-                        .wait(100)
                     }, 'Failed to detect page load after link click')
+                     /**
+                      * Arbitrary wait after page load to hopefully avoid flaky tests
+                      * caused by various javascript page initialization tasks.
+                      */
+                    .wait(100)
+                    .injectAxe()
+                    .checkA11y(null, null, null, true)
+                }
+                else{
+                    cy.log('Not waiting on any element to disappear')
                 }
             })
             .window().then((win) => {
@@ -482,7 +535,7 @@ Cypress.Commands.overwrite(
                         /**
                          * Add a slight delay to give any actions resulting from the ajax call time to take action (like re-render parts of the page).
                          */
-                        waitAfterAjax = 250
+                        waitAfterAjax = 100
                     }
 
                     return cy.wrap(returnValue)
@@ -507,6 +560,19 @@ Cypress.Commands.overwrite(
                      */
                     cy.log('Waiting for potential page load after project setting changes')
                     cy.wait(1000)
+                }
+
+                if(innerText === 'Add' && subject.closest('.fhir-system-actions').length === 1){
+                    /**
+                     * This page is strange in that it displays the exact same form once on the actual page
+                     * and again in a dialog when you click add.  Before the following was added, we had
+                     * a common issue where steps unexpectedly matched elements on the page instead of the dialog
+                     * while we're waiting for dialog to display (e.g. C.3.31.0500).
+                     */
+                    cy.log('Waiting on FHIR dialog to display')
+                    cy.wrap(subject).should(() => {
+                        expect(Cypress.$('.modal.show').length).to.equal(1)
+                    }).wait(500) // Wait for it to fully display
                 }
 
                 /**
@@ -977,7 +1043,7 @@ function filterCoveredElements(matches) {
     )
 }
 
-function isUserVisible(el) {
+function isVisibleToUsers(el) {
     if(el.tagName === 'OPTION'){
         // Respect the visibility of the select element rather than the option element 
         el = el.parentElement
@@ -1027,7 +1093,7 @@ Cypress.Commands.add("filterMatches", {prevSubject: true}, function (matches, te
             /**
              * Intelligently exclude things that the user would not consider visible or visible after scrolling.
              */
-            !isUserVisible(current)
+            !isVisibleToUsers(current)
         ){
             matches = matches.filter(match => match !== current)
         }
@@ -1501,8 +1567,17 @@ Cypress.Commands.add("getLabeledElement", {prevSubject: 'optional'}, function (s
     })
 })
 
+window.getCurrentExternalModuleDirectory = () => {
+    const parts = window.original_spec_path.split('/redcap_source/modules/')
+    if(parts.length === 1){
+        return null
+    }
+
+    return parts[1].split('/')[0]
+}
+
 window.isExternalModuleFeature = () => {
-    return window.original_spec_path.split('/redcap_source/modules/').length > 1
+    return window.getCurrentExternalModuleDirectory() !== null
 }
 
 window.getFilePathForCurrentFeature = (path) => {
