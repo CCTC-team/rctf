@@ -22,7 +22,13 @@ Given("I click on the survey option label containing {string} label{optionalStri
         const logout = (survey_option_label === 'Log out+ Open survey')
         cy.open_survey_in_same_tab($li, (optionalStr !== " and will leave the tab open when I return to the REDCap project"), logout)
         if(!logout){
-            cy.wrap($li).click()
+            // The survey-options menu item can sit outside the viewport when a tall
+            // PDF.js consent preview is on the page, so the default click races the
+            // center-visibility check (passes only on fast local Chrome; fails in
+            // headless/CI as "the center of this element is hidden from view").
+            // open_survey_in_same_tab has stubbed the onclick, so we only need the
+            // handler to fire — scroll it in and force the click.
+            cy.wrap($li).scrollIntoView().click({ force: true })
         }
     })
 })
