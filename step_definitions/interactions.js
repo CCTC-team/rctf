@@ -42,27 +42,38 @@ function performAction(action, element, elementStatus){
  */
  Given("I select the submit option labeled \"{instrumentSaveOptions}\" on the Data Collection Instrument", (text) => {
 
-     //REDCap does some crazy conditional display of buttons, so we try to handle that as we best can
-     cy.get('tr#__SUBMITBUTTONS__-tr').within(() => {
-         let btn = Cypress.$("button:contains(" + JSON.stringify(text) + ")");
+     // REDCap conditionally renders submit buttons: the requested option is either a visible
+     // button in the main submit row (#__SUBMITBUTTONS__-tr) or an <a> inside the "more options"
+     // dropdown opened by #submit-btn-dropdown. Under headless/CI timing that dropdown
+     // intermittently fails to open on the first click (the <a> stays in a display:none
+     // .dropdown-menu and the click times out as "expected <span> to be visible"), so open it
+     // defensively and retry until the target option is actually visible.
+     cy.get('tr#__SUBMITBUTTONS__-tr').should('exist').then(($row) => {
+         const mainBtn = $row.find('button:visible').filter((i, el) =>
+             el.id !== 'submit-btn-dropdown' && Cypress.$(el).text().includes(text))
 
-         //If the button shows up on the main section, we can click it like a typical element
-         if(btn.length){
-
-             cy.wrap(btn[0]).click()
-
-         //If the button does NOT show up on main section, let's find it in the dropdown section
-         } else {
-
-             cy.get('button#submit-btn-dropdown').
-                first().
-                click().
-                closest('div').
-                find('a').
-                contains(text).
-                should('be.visible').
-                click()
+         // Main, directly-visible button: click it like a typical element.
+         if(mainBtn.length){
+             cy.wrap(mainBtn.first()).click()
+             return
          }
+
+         // Option lives in the dropdown. Re-click the toggle until the option link is visible,
+         // gated on visibility so an already-open menu is never toggled shut.
+         const optionVisible = () =>
+             Cypress.$('#submit-btn-dropdown').closest('div').find('a').filter((i, el) =>
+                 Cypress.$(el).text().includes(text)).is(':visible')
+
+         const ensureDropdownOpen = (attemptsLeft) => {
+             if(optionVisible() || attemptsLeft <= 0) return
+             cy.get('button#submit-btn-dropdown').first().click({ force: true })
+             cy.wait(300)
+             cy.then(() => ensureDropdownOpen(attemptsLeft - 1))
+         }
+
+         cy.then(() => ensureDropdownOpen(4))
+         cy.get('button#submit-btn-dropdown').first().closest('div').find('a')
+            .contains(text).should('be.visible').click()
      })
  })
 

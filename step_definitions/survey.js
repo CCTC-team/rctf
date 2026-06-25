@@ -18,36 +18,10 @@
  * @description Clicks on a survey option label.  Track it via an optional tag.
  */
 Given("I click on the survey option label containing {string} label{optionalString}", (survey_option_label, optionalStr) => {
-    // Menu-OPEN guard. The "Survey options" button is clicked by the prior step as a
-    // single plain .click(); in headless/CI that click intermittently fails to open or
-    // hold the dropdown, so the survey-option <li> below never renders and .contains()
-    // times out (the "Open survey" not-found / double-click flake). Before reading the
-    // menu, confirm the target option is visible — and if it isn't, re-click "Survey
-    // options" to (re)open the dropdown and re-check, up to a few attempts.
-    const menuItemVisible = () =>
-        Cypress.$('ul:visible li:visible').filter((i, el) =>
-            Cypress.$(el).text().includes(survey_option_label)).length > 0
-
-    const ensureMenuOpen = (attemptsLeft) => {
-        if(menuItemVisible() || attemptsLeft <= 0) return
-
-        // Re-click the "Survey options" button. Locate it via jQuery (Cypress.$) rather than
-        // cy.get(...).filter(fn) — chaining a cy command here races a mid-transition DOM and
-        // can throw "cy.filter() failed because it requires a DOM element". force:true so a
-        // tall PDF.js consent preview pushing it out of view can't lose the click.
-        const $surveyOptions = Cypress.$('button:visible').filter((i, el) =>
-            Cypress.$(el).text().trim().includes('Survey options'))
-        if($surveyOptions.length > 0){
-            cy.wrap($surveyOptions.first()).scrollIntoView().click({ force: true })
-        }
-
-        // Let REDCap render the dropdown, then re-check / retry.
-        cy.wait(500)
-        cy.then(() => ensureMenuOpen(attemptsLeft - 1))
-    }
-
-    cy.then(() => ensureMenuOpen(3))
-
+    // The prior step ("I click on the button labeled \"Survey options\"") already opens the
+    // SurveyActionDropDown; cy.get() below retries for the full command timeout, so a slow
+    // open is tolerated. Do NOT re-click "Survey options" here — it is a toggle, so a second
+    // click closes the just-opened menu and the option <li> disappears.
     cy.get(`ul:visible li:visible`).contains(survey_option_label).then(($li) => {
         const logout = (survey_option_label === 'Log out+ Open survey')
         cy.open_survey_in_same_tab($li, (optionalStr !== " and will leave the tab open when I return to the REDCap project"), logout)
