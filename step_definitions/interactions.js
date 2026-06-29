@@ -358,10 +358,18 @@ Given ('I {enterType} {string} in(to) the( ){ordinal}( )textarea field {labeledE
 
                             //Logic editor does not use an actual textarea; we need to invoke the text instead!
                             if(label === "Logic Editor"){
-                                cy.wrap($parent).parent().find(element).eq(ord).
-                                    click({force: true}).
-                                    invoke('attr', 'contenteditable', 'true').
-                                    type(`{selectall} {backspace} {backspace} ${text}`, {force: true})
+                                // The branching-logic editor is an ACE code editor. Typing
+                                // char-by-char re-renders div.ace_line on each keystroke, which
+                                // detaches the element mid-.type() and throws "subject is no longer
+                                // attached to the DOM" (stricter on Cypress 15). Set the value via
+                                // ACE's API instead — no per-keystroke re-render, so nothing detaches.
+                                cy.wrap($parent).parent().find('#rc-ace-editor').then(($ace) => {
+                                    cy.window().then((win) => {
+                                        const editor = win.ace.edit($ace[0])
+                                        editor.setValue(text, -1) // -1: cursor to start, replaces all
+                                        editor.blur()
+                                    })
+                                })
 
                                 /**
                                  * This popup might still incorrectly remain displayed depending on timing.
