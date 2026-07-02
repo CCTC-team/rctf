@@ -25,7 +25,7 @@ Cypress.Commands.add('click_on_design_field_function', (type, field) => {
 })
 
 Cypress.Commands.add('edit_field_by_label', (name, timeout = 10000) => {
-    if(Cypress.$('div#working').length) cy.get('div#working').should('not.be.visible')
+    cy.wait_until_gone_or_hidden('div#working')
     cy.find_online_designer_field(name).parent().parentsUntil('tr').find('img[title=Edit]').parent().click()
     cy.get('div[role=dialog]').contains('Edit Field').should('be.visible')
 })

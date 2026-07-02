@@ -232,8 +232,8 @@ Given("I (should )see the date( and time) {string} in the field labeled {string}
  * @description Identifies specific text or special item within a cell on a table based upon row and column labels
  */
 Given("I (should )see (a )(an ){string} within the {string} row of the column labeled {string}{tableName}", (item, row_label, column_label, table) => {
-    if(Cypress.$('div#working').length) cy.get('div#working').should('not.be.visible')
-    if(Cypress.$('div#report_load_progress').length) cy.get('div#report_load_progress').should('not.be.visible')
+    cy.wait_until_gone_or_hidden('div#working')
+    cy.wait_until_gone_or_hidden('div#report_load_progress')
 
     const user_rights = { "checkmark" : `img[src*="tick"]`, "x" : `img[src*="cross"]` }
 

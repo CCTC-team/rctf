@@ -92,16 +92,29 @@ Cypress.Commands.add('not_loading', () => {
     }
 
     /**
-     * The 'if' checks below don't work properly 100% of the time because there is a race condition
-     * if the page happens to reload between the 'Cypress.$' and the 'cy.get()' calls,
-     * and the latter page no longer contains the specified div.
-     * I think we may want to deprecate the not_loading() command in favor of steps that
-     * look for something guaranteed to exist on the next page.
-     * That could be as simple as an "I should see" step specifying some text.
+     * Wait for each transient loading overlay to disappear.
+     *
+     * We query a fresh copy of the overlay off a stable parent (document.body) on
+     * every retry rather than holding a reference to the overlay itself. If the page
+     * re-renders or reloads mid-wait (e.g. a branching-logic dropdown select forces
+     * REDCap to redraw the data-entry form), the old overlay node detaches from the
+     * DOM. The previous `cy.get(sel).should('not.be.visible')` form would then blow up
+     * with "the subject is no longer attached to the DOM"; here a detached/removed
+     * overlay simply reads as "gone", which is exactly what we want.
      */
-    if(Cypress.$('span#progress_save').length) cy.get('span#progress_save').should('not.be.visible')
-    if(Cypress.$('div#progress').length) cy.get('div#progress').should('not.be.visible')
-    if(Cypress.$('div#working').length) cy.get('div#working', { timeout: 30000 }).should('not.be.visible')
+    cy.wait_until_gone_or_hidden('span#progress_save')
+    cy.wait_until_gone_or_hidden('div#progress')
+    cy.wait_until_gone_or_hidden('div#working', 30000)
+})
+
+Cypress.Commands.add('wait_until_gone_or_hidden', (selector, timeout = 4000) => {
+    cy.get('body', { timeout, log: false }).should(($body) => {
+        const $el = $body.find(selector)
+        // Passes when the overlay is absent OR present-but-not-visible. Re-queried
+        // from $body each retry, so a mid-wait re-render can never detach the subject.
+        expect($el.length === 0 || $el.is(':visible') === false,
+            `expected '${selector}' to be hidden or removed from the DOM`).to.eq(true)
+    })
 })
 
 Cypress.Commands.add("top_layer", (label_selector, base_element = 'div[role=dialog]:visible,html') => {

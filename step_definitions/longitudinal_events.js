@@ -52,8 +52,8 @@ Given("I add an event named {string} with offset of {int} day(s) into the curren
    cy.get("#addbutton").click()
 
    cy.wait("@add_event")
-   cy.get('#progress').should('not.be', 'visible')
-   cy.get('div#working').should('not.be', 'visible')
+   cy.wait_until_gone_or_hidden('#progress')
+   cy.wait_until_gone_or_hidden('div#working')
 
    // The behavior is not consistent from one load to the next ...
    // So we get stuck with fixed wait rather than doing something in Cypress recommended fashion.
