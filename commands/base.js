@@ -107,13 +107,32 @@ Cypress.Commands.add('not_loading', () => {
     cy.wait_until_gone_or_hidden('div#working', 30000)
 })
 
+/**
+ * Wait until every match of `selector` is gone or not showing. We re-query off
+ * $body each retry so a mid-wait re-render can never detach the subject.
+ *
+ * "Not showing" deliberately covers BOTH hiding mechanisms REDCap uses for these
+ * overlays:
+ *   - display:none / removed  -> jQuery `:visible` already reports these hidden.
+ *   - visibility:hidden        -> jQuery `:visible` reports these VISIBLE (it only
+ *     looks at layout box / display, never the `visibility` property). Many REDCap
+ *     `#progress` overlays are declared `style="visibility:hidden"` and toggled via
+ *     the visibility property (e.g. Design/define_events_ajax.php, Calendar/
+ *     scheduling.php), so a plain `is(':visible') === false` check can NEVER pass
+ *     for them and times out. We therefore also treat computed
+ *     visibility:hidden/collapse as hidden.
+ */
 Cypress.Commands.add('wait_until_gone_or_hidden', (selector, timeout = 4000) => {
     cy.get('body', { timeout, log: false }).should(($body) => {
-        const $el = $body.find(selector)
-        // Passes when the overlay is absent OR present-but-not-visible. Re-queried
-        // from $body each retry, so a mid-wait re-render can never detach the subject.
-        expect($el.length === 0 || $el.is(':visible') === false,
-            `expected '${selector}' to be hidden or removed from the DOM`).to.eq(true)
+        const showing = $body.find(selector).toArray().some((el) => {
+            if (!el.isConnected) return false
+            // display:none (and detached) => no layout boxes.
+            const hasLayout = el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0
+            if (!hasLayout) return false
+            const vis = el.ownerDocument.defaultView.getComputedStyle(el).visibility
+            return vis !== 'hidden' && vis !== 'collapse'
+        })
+        expect(showing, `expected '${selector}' to be hidden or removed from the DOM`).to.eq(false)
     })
 })
 
