@@ -250,28 +250,43 @@ function enterTextIntoField(enter_type, text, ordinal, input_type, column, label
         })
 
     } else {
-        const elm = cy.getLabeledElement('input', label, ordinal)
-
         if (enter_type === "enter" || enter_type === "clear field and enter") {
-            // Sometimes cypress will struggle to scroll a field into view and hang on the clear() call if we don't focus it first.
-            elm.focus()
-
             /**
-             * Clearing is important to replace what is there, but also to support "text === ''"
+             * Type the value, then confirm it actually stuck. A survey form that
+             * re-renders just after it opens can silently wipe a value typed into its
+             * first field before REDCap saves it (observed on the eConsent surveys:
+             * the participant's First Name intermittently dropped, so the saved
+             * record — and the archived PDF's identifier — lost it). Re-query the
+             * field and, only if it came back EMPTY, type again. We check for empty
+             * rather than an exact match so we never falsely retry fields that
+             * normalise the typed value (dates, masked/validated inputs, etc.).
              */
-            elm.clear()
-            if(text !== ''){
+            const fill = (attemptsLeft) => {
+                const elm = cy.getLabeledElement('input', label, ordinal)
+                // Focus first: cypress can otherwise hang on clear() while scrolling.
+                elm.focus()
+                // Clearing replaces what is there, and supports "text === ''".
+                elm.clear()
+                if(text === '') return
                 elm.type(text).then(elm => {
                     /**
                      * Blur after typing to trigger change events (e.g. C.3.31.2500).
                      * We used to just chain a cypress '.blur()' call after '.type()'
                      * but it failed with an odd error in the iframe on B.6.4.1200.
-                     * Calling the jQuery blur() method instead seems to work everywhere. 
+                     * Calling the jQuery blur() method instead seems to work everywhere.
                      */
                     elm.blur()
                 })
+                cy.getLabeledElement('input', label, ordinal).then(($el) => {
+                    if($el.val() === '' && attemptsLeft > 1){
+                        cy.wait(250, { log: false })
+                        fill(attemptsLeft - 1)
+                    }
+                })
             }
+            fill(3)
         } else if (enter_type === "verify"){
+            const elm = cy.getLabeledElement('input', label, ordinal)
             if(window.dateFormats.hasOwnProperty(text)){
                 //elm.invoke('val').should('match', window.dateFormats[text])
             } else {

@@ -78,6 +78,21 @@ Given("I (should )see a dialog containing the following text: {string}", (text) 
 /**
  * @module Visibility
  * @author Adam De Fouw <aldefouw@medicine.wisc.edu>
+ * @description Waits until no dialog is visible on the page. Some REDCap save
+ * handlers show a "successfully saved" dialog and then reload the page via a
+ * timed window.location.reload() (e.g. the Repeating Instruments setup in
+ * Classes/ProjectSetup.php fires reload() ~2.5s after the dialog). Waiting for
+ * the dialog to vanish is a reliable, timing-independent signal that the reload
+ * has completed, so a following navigation click isn't silently cancelled by
+ * the pending reload. Uses a generous timeout to stay robust under CI load.
+ */
+Given("I wait for the dialog to close", () => {
+    cy.wait_until_gone_or_hidden('div[role="dialog"]', 10000)
+})
+
+/**
+ * @module Visibility
+ * @author Adam De Fouw <aldefouw@medicine.wisc.edu>
  * @param {string} field_value - the text that should be displayed in the field
  * @param {string} field_name - the text that identifies the field in the form
  * @description Visually verifies the text within a data entry form field
