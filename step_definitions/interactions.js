@@ -253,13 +253,16 @@ function enterTextIntoField(enter_type, text, ordinal, input_type, column, label
         if (enter_type === "enter" || enter_type === "clear field and enter") {
             /**
              * Type the value, then confirm it actually stuck. A survey form that
-             * re-renders just after it opens can silently wipe a value typed into its
-             * first field before REDCap saves it (observed on the eConsent surveys:
-             * the participant's First Name intermittently dropped, so the saved
-             * record — and the archived PDF's identifier — lost it). Re-query the
-             * field and, only if it came back EMPTY, type again. We check for empty
-             * rather than an exact match so we never falsely retry fields that
-             * normalise the typed value (dates, masked/validated inputs, etc.).
+             * re-renders just after it opens can interrupt cypress's char-by-char
+             * type into its first field before REDCap saves it (observed on the
+             * eConsent surveys: the participant's First Name intermittently ended up
+             * EMPTY or TRUNCATED — e.g. "Firs" instead of "FirstName" — so the saved
+             * record and the archived PDF's identifier lost it). Re-query the field
+             * and type again if the value looks like an interrupted type: empty, or a
+             * strict prefix of what we meant to enter. We test for a prefix rather
+             * than an exact match so we never falsely retry fields that normalise the
+             * typed value (dates, masked/validated inputs) — a reformatted value is
+             * not a prefix of the text we typed.
              */
             const fill = (attemptsLeft) => {
                 const elm = cy.getLabeledElement('input', label, ordinal)
@@ -278,7 +281,11 @@ function enterTextIntoField(enter_type, text, ordinal, input_type, column, label
                     elm.blur()
                 })
                 cy.getLabeledElement('input', label, ordinal).then(($el) => {
-                    if($el.val() === '' && attemptsLeft > 1){
+                    const val = $el.val()
+                    // Retry on an interrupted type: empty, or a strict prefix of `text`
+                    // (e.g. "" or "Firs" when we meant "FirstName"). A normalised value
+                    // (reformatted date, mask) is not a prefix of `text`, so it won't retry.
+                    if(val !== text && text.startsWith(val) && attemptsLeft > 1){
                         cy.wait(250, { log: false })
                         fill(attemptsLeft - 1)
                     }
