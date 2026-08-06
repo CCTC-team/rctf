@@ -27,19 +27,20 @@ Given("I click on the survey option label containing {string} label{optionalStri
         cy.open_survey_in_same_tab($li, (optionalStr !== " and will leave the tab open when I return to the REDCap project"), logout)
         if(!logout){
             // The survey-options menu item can sit outside the viewport when a tall
-            // PDF.js consent preview is on the page, so the default click races the
-            // center-visibility check (passes only on fast local Chrome; fails in
-            // headless/CI as "the center of this element is hidden from view").
-            // open_survey_in_same_tab has stubbed the onclick, so we only need the
-            // handler to fire — scroll it in and force the click.
-            cy.wrap($li).scrollIntoView().click({ force: true })
+            // PDF.js consent preview is on the page, so scroll it in before clicking.
+            // The click then runs Cypress's normal actionability checks: the item must
+            // be visible and its center must be the hit-test target. Keeping those
+            // checks is the point — open_survey_in_same_tab has already stubbed the
+            // onclick, so a forced click would fire the handler even when something is
+            // genuinely covering the item, turning a layout regression into a silent pass.
+            cy.wrap($li).scrollIntoView().click()
         }
     })
 })
 
 /**
  * @module Survey
- * @author Adam De Fouw <aldefouw@medicine.wisc.edu>
+ * @author Mintoo Xavier <min2xavier@gmail.com>
  * @description Dismisses the e-Consent "Okay" confirmation dialog only if it is present.
  *   After "Save & Stay" on an e-Consent instrument, REDCap shows an "Okay" confirmation
  *   dialog for some saves (e.g. the first consent on a record) but goes straight to the
@@ -71,7 +72,7 @@ Given("I dismiss the {string} confirmation dialog if it appears", (label) => {
     cy.then(() => {
         const $control = findControl()
         if($control.length > 0){
-            cy.wrap($control.first()).click({ force: true })
+            cy.wrap($control.first()).click()
         }
     })
 })
