@@ -402,8 +402,10 @@ function applyNewSessionIdAfterTwoFactorLogin(){
          * There seems to be a bug in cypress that is prevents the session ID cookie
          * from updating properly after this request.  We must clear the cookies and
          * manually set the new one for it to stick.  This only occurs on A.3.28.1200.
+         * Only the session cookie is cleared, so the "Don't prompt me with two-step login
+         * on this computer for 24 hours" cookie survives (D.101.0100).
          */
-        cy.clearCookies() 
+        cy.clearCookie('redcap_session_42099b4')
         cy.setCookie('redcap_session_42099b4', window.newSessionId)
     })
 }
