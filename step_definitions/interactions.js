@@ -270,8 +270,12 @@ function enterTextIntoField(enter_type, text, ordinal, input_type, column, label
                      * We used to just chain a cypress '.blur()' call after '.type()'
                      * but it failed with an odd error in the iframe on B.6.4.1200.
                      * Calling the jQuery blur() method instead seems to work everywhere.
+                     * Autocomplete inputs (e.g. Data Search) are left focused, since blurring
+                     * closes the result list before a result can be clicked (B.3.14.1300).
                      */
-                    elm.blur()
+                    if(!elm.hasClass('ui-autocomplete-input')){
+                        elm.blur()
+                    }
                 })
                 cy.getLabeledElement(type, label, ordinal).then(($el) => {
                     const val = $el.val()
