@@ -381,8 +381,12 @@ function interceptNewSessionIdOnTwoFactorLogin(){
         },
         req => {
             req.on('response', res => {
-                const parts = res.headers['set-cookie'][0].split('redcap_session_42099b4=')
-                window.newSessionId = parts[1].split(';')[0]
+                // A rejected verification code doesn't start a new session, so no cookie is set
+                const sessionCookie = [].concat(res.headers['set-cookie'] || [])
+                    .find(cookie => cookie.startsWith('redcap_session_42099b4='))
+                if (sessionCookie) {
+                    window.newSessionId = sessionCookie.split('redcap_session_42099b4=')[1].split(';')[0]
+                }
             })
         }
     ).as('two_factor_verify_code')
@@ -390,6 +394,10 @@ function interceptNewSessionIdOnTwoFactorLogin(){
 
 function applyNewSessionIdAfterTwoFactorLogin(){
     cy.wait('@two_factor_verify_code').then(() => {
+        if (!window.newSessionId) {
+            return
+        }
+
         /**
          * There seems to be a bug in cypress that is prevents the session ID cookie
          * from updating properly after this request.  We must clear the cookies and
