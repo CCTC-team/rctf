@@ -17,7 +17,7 @@ CCTC has two divisions: Cancer Theme, which coordinates trial delivery, and Clin
 `redcap_val` is periodically synced with Vanderbilt's `main` by merge (not rebase), so the CCTC changes stay in history.
 
 - **Last sync:** 2026-10-16, Vanderbilt `main` at `f20fb24` (2026-10-12).
-- **Current CCTC tag:** `cctc_v1.0.13`. It includes the follow-up fixes for REDCap 17.5.6.
+- **Current CCTC tag:** `cctc_v1.0.14`. It includes the follow-up fixes for REDCap 17.5.6 and the e-Consent required-fields popup wait.
 - **Kept over upstream during the sync:** CCTC's headless/CI hardening (overlay and dialog waits, survey-open handling, field-fill retry, ACE Logic Editor value).
 
 ## How do we test the tests?
