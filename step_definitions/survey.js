@@ -66,8 +66,21 @@ Given("I dismiss the {string} confirmation dialog if it appears", (label) => {
         Cypress.$('button:visible, a:visible, input[type="button"]:visible').filter((i, el) =>
             (Cypress.$(el).text() || el.value || '').trim() === label)
 
+    // The "NOTE: Some fields are required!" dialog is REDCap's #reqPopup. The server prints
+    // the hidden div whenever the save redirected with __reqmsg, but only opens it as a
+    // dialog once Multi-Language Management has initialised, which under CI load can take
+    // longer than the 20s window. If that window ran out, the dialog opened over the Survey
+    // options menu and swallowed the "Open survey" click (surveyOpen() never ran). While
+    // the div is present but not yet a jQuery UI dialog, the dialog is certain to come, so
+    // keep waiting for it instead of giving up.
+    const reqPopupPending = () => {
+        const $popup = Cypress.$('#reqPopup')
+        return $popup.length > 0 && !$popup.hasClass('ui-dialog-content')
+    }
+
     const pollForDialog = (msLeft) => {
-        if(findControl().length > 0 || msLeft <= 0) return
+        if(findControl().length > 0) return
+        if(msLeft <= 0 && !(reqPopupPending() && msLeft > -40000)) return
         cy.wait(500, { log: false })
         cy.then(() => pollForDialog(msLeft - 500))
     }
