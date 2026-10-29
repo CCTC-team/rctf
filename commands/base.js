@@ -325,6 +325,7 @@ const getElementThatShouldDisappearAfterClick = ($el) => {
         $el.id === 'assignDagRoleBtn' // C.3.30.1800
         || $el.innerText === 'Save signature' // A.3.28.0600
         || ($el.getAttribute('onclick') ?? '').startsWith('window.location.href=') // C.3.31.3300
+        || ($el.getAttribute('onclick') ?? '').startsWith('surveyOpen(') // A.6.4.1600
         /**
          * It doesn't matter what we return for downloads as long as we return something
          * It might as well just be the element.
@@ -335,7 +336,7 @@ const getElementThatShouldDisappearAfterClick = ($el) => {
     }
 
     // Use $el.href here since it will return absolute urls even when relative urls are specified
-    const href = $el.href ?? ''
+    const href = $el.href ?? $el.closest('a')?.href ?? ''
 
     if(
         $el.id === 'login_btn'
@@ -432,6 +433,7 @@ Cypress.Commands.overwrite(
         const innerText = subject[0].innerText
 
         if(subject[0].nodeName === "A" ||
+            subject[0].closest('a') ||
             subject[0].nodeName === "BUTTON" ||
             (subject[0].nodeName === "INPUT" && ["button", "submit"].includes(subject[0].type))
         ){
@@ -503,7 +505,7 @@ Cypress.Commands.overwrite(
                          * We piggy back off of disappearing element detection to also wait for expected file downloads.
                          */
                         let downloadDetected = false
-                        return cy.task('fetchLatestDownload', {fileExtension: null, retry: false}).then(filePath => {
+                        return cy.fetchLatestDownload().then(filePath => {
                             if(filePath){
                                 cy.getFileMTime(filePath).then(mtime => {
                                     if(mtime > timeBeforeClick){
@@ -1425,28 +1427,7 @@ Cypress.Commands.add("getLabeledElement", {prevSubject: 'optional'}, function (s
             })
         })
 
-        let escapedText = JSON.stringify(text) // Should probably add .replaceAll('\\n', '\n')
-        let containsText = escapedText
-        if(text === 'Log out+ Open survey'){
-            /**
-             * Special case for B.3.15.0400 & C.3.30.0800.
-             * Mark first tried solving this generically by switching from the :contains() selector to $('*').filter()
-             * with a filter function based on innerText (:contains() is based on raw HTML via textContent).
-             * It was about 33% slower on B.3.15.0400 though, so he abandoned that approach (stashed it just in case).
-             */
-            containsText = 'Log out+\n\t\t\t\t\t\t\t\n\t\t\t\t\t\t\tOpen survey'
-        }
-
-        let selector = [
-            `input[placeholder=${escapedText}]:visible`,
-            // We don't specify ':visible' here like the others so that unselected select options are matched (e.g. C.3.30.0700.)
-            `:contains(${containsText})`,
-            `[title*=${escapedText}]:visible`,
-            `[data-bs-original-title*=${escapedText}]:visible`,
-            `[data-tooltip*=${escapedText}]:visible`,
-            `input[type=button][value*=${escapedText}]:visible`,
-            `input[type=submit][value*=${escapedText}]:visible`,
-        ].join(', ')
+        const selector = rctf.getContainingTextSelector(text)
 
         let next
         if(window.withinTarget){
