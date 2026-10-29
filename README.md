@@ -17,7 +17,7 @@ CCTC has two divisions: Cancer Theme, which coordinates trial delivery, and Clin
 `redcap_val` is periodically synced with Vanderbilt's `main` by merge (not rebase), so the CCTC changes stay in history.
 
 - **Last sync:** 2026-10-29, Vanderbilt `main` at `11c34bc` (2026-10-26). It brings upstream's fixes for REDCap 17.5.7 (the security-hardening release), including removal of the "I add an event named ..." and "I click on the Edit/Delete image for the event named ..." steps.
-- **Current CCTC tag:** `cctc_v1.0.15`. It includes the follow-up fixes for REDCap 17.5.6, the e-Consent required-fields popup wait, and the 2026-10-29 sync for 17.5.7.
+- **Current CCTC tag:** `cctc_v1.0.16`. It includes the follow-up fixes for REDCap 17.5.6, the e-Consent required-fields popup wait, the 2026-10-29 sync for 17.5.7, and `*` wildcards in downloaded-file names (for the edoc ids 17.5.7 adds to ZIP exports).
 - **Kept over upstream during the sync:** CCTC's headless/CI hardening (overlay and dialog waits, survey-open handling, field-fill retry, ACE Logic Editor value).
 
 ## How do we test the tests?
