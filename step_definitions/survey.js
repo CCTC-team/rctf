@@ -10,6 +10,34 @@
     cy.get('input[id="esign_password"').type(password)
 })
 
+// REDCap's "Some fields are required!" dialog (#reqPopup) is printed hidden after a save and only
+// opens once the page has finished initialising, which under CI load can be after the Survey
+// options menu is already open. It then covers the menu and swallows the click on the option.
+// Waits while it is pending, closes it if it opened, and reopens the menu only if that closed it.
+function dismissRequiredFieldsPopup(survey_option_label) {
+    const waitForPopup = (msLeft) => {
+        const $popup = Cypress.$('#reqPopup')
+        if($popup.length === 0 || $popup.hasClass('ui-dialog-content') || msLeft <= 0) return
+        cy.wait(500, { log: false })
+        cy.then(() => waitForPopup(msLeft - 500))
+    }
+
+    cy.then(() => waitForPopup(40000))
+    cy.then(() => {
+        const $popup = Cypress.$('#reqPopup')
+        if(!$popup.hasClass('ui-dialog-content') || !$popup.is(':visible')) return
+
+        const $dialog = $popup.closest('.ui-dialog')
+        cy.wrap($dialog).contains('button', 'Okay').click()
+        cy.wrap($dialog).should('not.be.visible')
+        cy.then(() => {
+            const optionVisible = Cypress.$('ul:visible li:visible').filter((i, el) =>
+                Cypress.$(el).text().includes(survey_option_label)).length > 0
+            if(!optionVisible) cy.contains('button', 'Survey options').click()
+        })
+    })
+}
+
 /**
  * @module Survey
  * @author Adam De Fouw <aldefouw@medicine.wisc.edu>
@@ -22,6 +50,7 @@ Given("I click on the survey option label containing {string} label{optionalStri
     // SurveyActionDropDown; cy.get() below retries for the full command timeout, so a slow
     // open is tolerated. Do NOT re-click "Survey options" here — it is a toggle, so a second
     // click closes the just-opened menu and the option <li> disappears.
+    dismissRequiredFieldsPopup(survey_option_label)
     cy.get(`ul:visible li:visible`).contains(survey_option_label).then(($li) => {
         const logout = (survey_option_label === 'Log out+ Open survey')
         const sameTab = (optionalStr !== " and will leave the tab open when I return to the REDCap project")
